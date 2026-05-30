@@ -1,0 +1,119 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String   @id @default(cuid())
+  username       String   @unique
+  email          String   @unique
+  passwordHash   String
+  points         Int      @default(0)
+  badges         String   @default("[]") // JSON array of badge names
+  streak         Int      @default(0)
+  lastDebateDate        String?  // ISO date string of last debate
+  lastChallengeDate     String?  // ISO date of last challenge completion
+  lastChallengeCompleted Boolean @default(false) // Whether today's challenge was completed
+  totalBadgesEarned     Int     @default(0) // Denormalized count for faster queries
+  longestStreak         Int     @default(0) // Best streak ever
+  onboardingDone        Boolean @default(false)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  stances        UserStance[]
+  conversationsA Conversation[] @relation("UserA")
+  conversationsB Conversation[] @relation("UserB")
+  messages       Message[]
+  surveys        Survey[]
+  notifications  Notification[]
+}
+
+model Topic {
+  id        String   @id @default(cuid())
+  name      String
+  question  String
+  optionA   String   // Pro stance label
+  optionB   String   // Anti stance label
+  sourceUrl1 String
+  sourceUrl2 String?
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  stances       UserStance[]
+  conversations Conversation[]
+}
+
+model UserStance {
+  id             String   @id @default(cuid())
+  userId         String
+  topicId        String
+  stanceSelected String   // "A" or "B"
+  createdAt      DateTime @default(now())
+
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topic Topic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, topicId])
+}
+
+model Conversation {
+  id                 String   @id @default(cuid())
+  topicId            String
+  userAId            String
+  userBId            String?
+  status             String   @default("waiting") // waiting, matched, step1, step2_paraphrase, step2_validate, step3, step4, step5, completed
+  understandingScore Int?
+  civilityScore      Int?
+  currentStep        Int      @default(1)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  topic    Topic     @relation(fields: [topicId], references: [id])
+  userA    User      @relation("UserA", fields: [userAId], references: [id])
+  userB    User?     @relation("UserB", fields: [userBId], references: [id])
+  messages Message[]
+  surveys  Survey[]
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  conversationId String
+  senderId       String
+  messageType    String   // argument, paraphrase, counter_argument, response, final_summary, ai_suggestion
+  content        String
+  step           Int      // 1-5
+  createdAt      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+}
+
+model Survey {
+  id                 String   @id @default(cuid())
+  conversationId     String
+  userId             String
+  understandingScore Int      // 1-5
+  civilityScore      Int      // 1-5
+  learnedText        String?  // optional
+  createdAt          DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String   // matched, response_waiting, completed, badge_earned, points_earned
+  content   String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
